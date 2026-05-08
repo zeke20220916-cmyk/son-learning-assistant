@@ -19,8 +19,25 @@ const categoryNames = {
   learning: "学习任务",
   life: "生活习惯"
 };
+const titleTypeNames = {
+  achievement: "正向称号",
+  hidden: "隐藏称号",
+  warning: "提醒称号"
+};
+const conditionNames = {
+  first_any_completed: "第一次完成任意任务",
+  perfect_day: "当天全部任务完成",
+  streak_perfect: "连续满环天数达到",
+  daily_completed_count: "当天完成任务数达到",
+  daily_points: "当天任务积分达到",
+  all_life_completed: "当天生活习惯全部完成",
+  life_streak: "连续完成全部生活习惯天数达到",
+  same_task_completed_streak: "同一个任务连续完成次数达到",
+  same_task_missed_streak: "同一个任务连续未完成次数达到",
+  two_days_all_missed: "连续两天全部未完成"
+};
 
-const levelTitles = [
+const defaultLevelTitles = [
   [0, "学习新兵"],
   [50, "小小行动派"],
   [100, "任务小能手"],
@@ -42,6 +59,126 @@ const defaultState = {
   titles: [],
   pointLogs: [],
   rewardClaims: [],
+  awardedRuleBonuses: [],
+  levelTitles: defaultLevelTitles.map(([points, name]) => ({ id: crypto.randomUUID(), points, name })),
+  pointRules: {
+    perfectDayBonus: 10,
+    streak3Bonus: 20,
+    streak7Bonus: 50,
+    lifePerfectBonus: 5
+  },
+  titleRules: [
+    {
+      id: crypto.randomUUID(),
+      name: "起步之星",
+      type: "achievement",
+      condition: "first_any_completed",
+      threshold: 1,
+      description: "第一次完成任意任务。",
+      active: true,
+      temporaryDays: 0
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "今日全胜",
+      type: "achievement",
+      condition: "perfect_day",
+      threshold: 1,
+      description: "完成当天全部任务。",
+      active: true,
+      temporaryDays: 0
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "生活小管家",
+      type: "achievement",
+      condition: "all_life_completed",
+      threshold: 1,
+      description: "当天生活习惯全部完成。",
+      active: true,
+      temporaryDays: 0
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "三日连胜",
+      type: "achievement",
+      condition: "streak_perfect",
+      threshold: 3,
+      description: "连续 3 天完成全部任务。",
+      active: true,
+      temporaryDays: 0
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "一周满环",
+      type: "achievement",
+      condition: "streak_perfect",
+      threshold: 7,
+      description: "连续 7 天完成全部任务。",
+      active: true,
+      temporaryDays: 0
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "习惯守护者",
+      type: "hidden",
+      condition: "life_streak",
+      threshold: 5,
+      description: "隐藏称号：连续完成全部生活习惯。",
+      active: true,
+      temporaryDays: 0
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "高效小火箭",
+      type: "achievement",
+      condition: "daily_completed_count",
+      threshold: 5,
+      description: "单日完成 5 个任务。",
+      active: true,
+      temporaryDays: 0
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "积分冲刺王",
+      type: "achievement",
+      condition: "daily_points",
+      threshold: 50,
+      description: "单日任务积分达到 50 分。",
+      active: true,
+      temporaryDays: 0
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "拖沓王",
+      type: "warning",
+      condition: "two_days_all_missed",
+      threshold: 1,
+      description: "连续两天所有任务都未完成，重新点亮一天就会翻篇。",
+      active: true,
+      temporaryDays: 3
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "任务躲猫猫大师",
+      type: "warning",
+      condition: "same_task_missed_streak",
+      threshold: 3,
+      description: "同一个任务连续几次未完成。",
+      active: true,
+      temporaryDays: 3
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "稳定输出",
+      type: "hidden",
+      condition: "same_task_completed_streak",
+      threshold: 3,
+      description: "隐藏称号：同一个任务连续完成。",
+      active: true,
+      temporaryDays: 0
+    }
+  ],
   tasks: [
     {
       id: crypto.randomUUID(),
@@ -138,6 +275,35 @@ function loadState() {
 }
 
 function normalizeState(nextState) {
+  nextState.pointRules = {
+    ...structuredClone(defaultState.pointRules),
+    ...(nextState.pointRules || {})
+  };
+  nextState.titleRules = (nextState.titleRules?.length ? nextState.titleRules : defaultState.titleRules).map((rule) => ({
+    id: rule.id || crypto.randomUUID(),
+    name: rule.name || "新称号",
+    type: rule.type || "achievement",
+    condition: rule.condition || "perfect_day",
+    threshold: Number(rule.threshold) || 1,
+    description: rule.description || "",
+    active: rule.active !== false,
+    temporaryDays: Number(rule.temporaryDays) || 0
+  }));
+  nextState.rewards = (nextState.rewards || []).map((reward) => ({
+    ...reward,
+    active: reward.active !== false
+  }));
+  nextState.awardedRuleBonuses = nextState.awardedRuleBonuses || [];
+  nextState.levelTitles = (nextState.levelTitles?.length
+    ? nextState.levelTitles
+    : defaultLevelTitles.map(([points, name]) => ({ id: crypto.randomUUID(), points, name }))
+  )
+    .map((item) => ({
+      id: item.id || crypto.randomUUID(),
+      points: Number(item.points) || 0,
+      name: item.name || "等级称号"
+    }))
+    .sort((a, b) => a.points - b.points);
   nextState.tasks = (nextState.tasks || []).map((task) => ({
     ...task,
     category: task.category || "learning"
@@ -202,10 +368,14 @@ function statusText(status) {
 }
 
 function getLevelTitle(points) {
-  return levelTitles.reduce((current, item) => (points >= item[0] ? item : current), levelTitles[0])[1];
+  const titles = state.levelTitles?.length
+    ? state.levelTitles
+    : defaultLevelTitles.map(([threshold, name]) => ({ points: threshold, name }));
+  return titles.reduce((current, item) => (points >= item.points ? item : current), titles[0]).name;
 }
 
 function addPointLog(points, reason, sourceId) {
+  if (!points) return;
   state.points += points;
   state.pointLogs.unshift({
     id: crypto.randomUUID(),
@@ -214,6 +384,12 @@ function addPointLog(points, reason, sourceId) {
     sourceId,
     createdAt: new Date().toISOString()
   });
+}
+
+function awardRulePoints(points, reason, sourceId) {
+  if (!points || state.awardedRuleBonuses.includes(sourceId)) return;
+  state.awardedRuleBonuses.push(sourceId);
+  addPointLog(points, reason, sourceId);
 }
 
 function hasTitle(name) {
@@ -239,24 +415,27 @@ function checkAchievements(date) {
   const tasks = state.daily[date] || [];
   const completed = tasks.filter((task) => task.status === "completed");
   const notCompleted = tasks.filter((task) => task.status === "not_completed");
+  const lifeTasks = tasks.filter((task) => task.category === "life");
+  const lifeCompleted = lifeTasks.filter((task) => task.status === "completed");
   const perfect = tasks.length > 0 && completed.length === tasks.length;
+  const lifePerfect = lifeTasks.length > 0 && lifeCompleted.length === lifeTasks.length;
+  const dailyPoints = completed.reduce((sum, task) => sum + task.points, 0);
 
-  if (completed.length > 0) earnTitle("起步之星", "achievement", "第一次完成学习任务。");
   if (perfect) {
-    earnTitle("今日全胜", "achievement", "第一次完成当天全部任务。");
-    earnTitle("小小坚持家", "hidden", "隐藏称号：完成一次完整学习日。");
     if (state.lastPerfectDate !== date) {
-      addPointLog(10, "今日全部任务完成奖励", `perfect-${date}`);
       state.lastPerfectDate = date;
       state.streak += 1;
     }
+    awardRulePoints(state.pointRules.perfectDayBonus, "今日全部任务完成奖励", `perfect-${date}`);
   }
-
-  if (state.streak >= 3) earnTitle("三日连胜", "achievement", "连续 3 天完成全部任务。");
-  if (state.streak >= 7) earnTitle("一周满环", "achievement", "连续 7 天完成全部任务。");
-  if (completed.length >= 5) earnTitle("高效小火箭", "achievement", "单日完成 5 个任务。");
-  if (completed.reduce((sum, task) => sum + task.points, 0) >= 50) {
-    earnTitle("积分冲刺王", "achievement", "单日任务积分达到 50 分。");
+  if (lifePerfect) {
+    awardRulePoints(state.pointRules.lifePerfectBonus, "生活习惯全部完成奖励", `life-perfect-${date}`);
+  }
+  if (state.streak >= 3) {
+    awardRulePoints(state.pointRules.streak3Bonus, "连续 3 天满环奖励", "streak-3");
+  }
+  if (state.streak >= 7) {
+    awardRulePoints(state.pointRules.streak7Bonus, "连续 7 天满环奖励", "streak-7");
   }
 
   const allIncomplete = tasks.length > 0 && notCompleted.length === tasks.length;
@@ -264,22 +443,49 @@ function checkAchievements(date) {
   const yesterdayTasks = state.daily[yesterday] || [];
   const yesterdayIncomplete =
     yesterdayTasks.length > 0 && yesterdayTasks.every((task) => task.status === "not_completed");
-  if (allIncomplete && yesterdayIncomplete) {
-    earnTitle("拖沓王", "warning", "连续两天所有任务都未完成，重新点亮一天就会翻篇。", 3);
-  }
+  const lifeStreak = getCategoryPerfectStreak(date, "life");
 
-  state.tasks.forEach((template) => {
-    const recent = [-2, -1, 0]
-      .map((offset) => state.daily[shiftDate(date, offset)] || [])
-      .map((items) => items.find((item) => item.templateId === template.id))
-      .filter(Boolean);
-    if (recent.length >= 3 && recent.every((item) => item.status === "not_completed")) {
-      earnTitle("任务躲猫猫大师", "warning", `连续几次没有完成「${template.title}」。`, 3);
+  state.titleRules.filter((rule) => rule.active).forEach((rule) => {
+    const threshold = Number(rule.threshold) || 1;
+    let matched = false;
+    let description = rule.description;
+    if (rule.condition === "first_any_completed") matched = completed.length > 0;
+    if (rule.condition === "perfect_day") matched = perfect;
+    if (rule.condition === "streak_perfect") matched = state.streak >= threshold;
+    if (rule.condition === "daily_completed_count") matched = completed.length >= threshold;
+    if (rule.condition === "daily_points") matched = dailyPoints >= threshold;
+    if (rule.condition === "all_life_completed") matched = lifePerfect;
+    if (rule.condition === "life_streak") matched = lifeStreak >= threshold;
+    if (rule.condition === "two_days_all_missed") matched = allIncomplete && yesterdayIncomplete;
+    if (rule.condition === "same_task_completed_streak" || rule.condition === "same_task_missed_streak") {
+      const status = rule.condition === "same_task_completed_streak" ? "completed" : "not_completed";
+      const template = state.tasks.find((item) => getTaskStatusStreak(item.id, date, status) >= threshold);
+      matched = Boolean(template);
+      if (template) description = `${rule.description}「${template.title}」`;
     }
-    if (recent.length >= 3 && recent.every((item) => item.status === "completed")) {
-      earnTitle("稳定输出", "hidden", `隐藏称号：连续完成「${template.title}」。`);
-    }
+    if (matched) earnTitle(rule.name, rule.type, description, Number(rule.temporaryDays) || 0);
   });
+}
+
+function getCategoryPerfectStreak(date, category) {
+  let streak = 0;
+  for (let offset = 0; offset > -60; offset -= 1) {
+    const items = state.daily[shiftDate(date, offset)] || [];
+    const scoped = items.filter((task) => task.category === category);
+    if (!scoped.length || !scoped.every((task) => task.status === "completed")) break;
+    streak += 1;
+  }
+  return streak;
+}
+
+function getTaskStatusStreak(templateId, date, status) {
+  let streak = 0;
+  for (let offset = 0; offset > -60; offset -= 1) {
+    const item = (state.daily[shiftDate(date, offset)] || []).find((task) => task.templateId === templateId);
+    if (!item || item.status !== status) break;
+    streak += 1;
+  }
+  return streak;
 }
 
 function shiftDate(date, offset) {
@@ -380,6 +586,83 @@ function claimReward(id) {
     createdAt: new Date().toISOString()
   });
   setState({ toast: "奖励兑换已记录" });
+}
+
+function submitPointRules(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  state.pointRules = {
+    perfectDayBonus: Number(form.get("perfectDayBonus")) || 0,
+    streak3Bonus: Number(form.get("streak3Bonus")) || 0,
+    streak7Bonus: Number(form.get("streak7Bonus")) || 0,
+    lifePerfectBonus: Number(form.get("lifePerfectBonus")) || 0
+  };
+  setState({ toast: "积分奖励规则已保存" });
+}
+
+function submitReward(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const title = form.get("title").trim();
+  const cost = Number(form.get("cost")) || 0;
+  if (!title || cost <= 0) return showToast("奖励名称和积分都需要填写");
+  state.rewards.unshift({ id: crypto.randomUUID(), title, cost, active: true });
+  event.currentTarget.reset();
+  setState({ toast: "奖励已添加" });
+}
+
+function deleteReward(id) {
+  state.rewards = state.rewards.filter((reward) => reward.id !== id);
+  setState({ toast: "奖励已删除" });
+}
+
+function submitTitleRule(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const name = form.get("name").trim();
+  if (!name) return showToast("称号名称需要填写");
+  state.titleRules.unshift({
+    id: crypto.randomUUID(),
+    name,
+    type: form.get("type"),
+    condition: form.get("condition"),
+    threshold: Number(form.get("threshold")) || 1,
+    description: form.get("description").trim() || conditionNames[form.get("condition")],
+    active: true,
+    temporaryDays: Number(form.get("temporaryDays")) || 0
+  });
+  event.currentTarget.reset();
+  setState({ toast: "称号规则已添加" });
+}
+
+function deleteTitleRule(id) {
+  state.titleRules = state.titleRules.filter((rule) => rule.id !== id);
+  setState({ toast: "称号规则已删除" });
+}
+
+function toggleTitleRule(id) {
+  state.titleRules = state.titleRules.map((rule) =>
+    rule.id === id ? { ...rule, active: !rule.active } : rule
+  );
+  setState({ toast: "称号规则已更新" });
+}
+
+function submitLevelTitle(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const name = form.get("name").trim();
+  const points = Number(form.get("points"));
+  if (!name || Number.isNaN(points) || points < 0) return showToast("等级称号和积分门槛都需要填写");
+  state.levelTitles.push({ id: crypto.randomUUID(), name, points });
+  state.levelTitles.sort((a, b) => a.points - b.points);
+  event.currentTarget.reset();
+  setState({ toast: "积分等级称号已添加" });
+}
+
+function deleteLevelTitle(id) {
+  if (state.levelTitles.length <= 1) return showToast("至少保留一个等级称号");
+  state.levelTitles = state.levelTitles.filter((title) => title.id !== id);
+  setState({ toast: "积分等级称号已删除" });
 }
 
 function showToast(message) {
@@ -536,24 +819,185 @@ function renderRewardsPanel() {
 
 function renderParent() {
   return `
-    <section class="parent-grid">
-      <div class="panel">
-        <div class="section-title">
-          <h2>${state.form ? "编辑任务" : "新增任务"}</h2>
-          ${state.form ? `<button class="btn ghost" data-cancel-form>取消</button>` : ""}
+    <section class="parent-stack">
+      <div class="parent-grid">
+        <div class="panel">
+          <div class="section-title">
+            <h2>${state.form ? "编辑任务" : "新增任务"}</h2>
+            ${state.form ? `<button class="btn ghost" data-cancel-form>取消</button>` : ""}
+          </div>
+          ${renderTaskForm()}
         </div>
-        ${renderTaskForm()}
+        <div class="panel">
+          <div class="section-title">
+            <h2>任务设置</h2>
+            <span class="muted">周期任务与临时任务</span>
+          </div>
+          <div class="manage-list">
+            ${state.tasks.map(renderManageTask).join("")}
+          </div>
+        </div>
       </div>
-      <div class="panel">
-        <div class="section-title">
-          <h2>任务设置</h2>
-          <span class="muted">周期任务与临时任务</span>
-        </div>
-        <div class="manage-list">
-          ${state.tasks.map(renderManageTask).join("")}
-        </div>
+      <div class="parent-grid">
+        ${renderPointRulePanel()}
+        ${renderRewardManagePanel()}
       </div>
+      ${renderTitleRulePanel()}
     </section>
+  `;
+}
+
+function renderPointRulePanel() {
+  return `
+    <div class="panel">
+      <div class="section-title">
+        <h2>积分奖励规则</h2>
+        <span class="muted">完成任务积分之外的额外奖励</span>
+      </div>
+      <form class="form" data-point-rules-form>
+        <div class="inline-fields">
+          <div class="field">
+            <label>当天全部任务完成</label>
+            <input name="perfectDayBonus" type="number" min="0" value="${state.pointRules.perfectDayBonus}" />
+          </div>
+          <div class="field">
+            <label>生活习惯全部完成</label>
+            <input name="lifePerfectBonus" type="number" min="0" value="${state.pointRules.lifePerfectBonus}" />
+          </div>
+        </div>
+        <div class="inline-fields">
+          <div class="field">
+            <label>连续 3 天满环</label>
+            <input name="streak3Bonus" type="number" min="0" value="${state.pointRules.streak3Bonus}" />
+          </div>
+          <div class="field">
+            <label>连续 7 天满环</label>
+            <input name="streak7Bonus" type="number" min="0" value="${state.pointRules.streak7Bonus}" />
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" type="submit">保存积分规则</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+function renderRewardManagePanel() {
+  return `
+    <div class="panel">
+      <div class="section-title">
+        <h2>奖励兑换设置</h2>
+        <span class="muted">孩子端奖励中心会同步显示</span>
+      </div>
+      <form class="form compact-form" data-reward-form>
+        <div class="inline-fields">
+          <div class="field">
+            <label>奖励名称</label>
+            <input name="title" placeholder="例如：周末看一集动画" />
+          </div>
+          <div class="field">
+            <label>所需积分</label>
+            <input name="cost" type="number" min="1" placeholder="50" />
+          </div>
+        </div>
+        <div class="actions"><button class="btn primary" type="submit">添加奖励</button></div>
+      </form>
+      <div class="manage-list rule-list">
+        ${state.rewards.map((reward) => `
+          <div class="mini-card">
+            <strong>${escapeHtml(reward.title)}</strong>
+            <p>${reward.cost} 分</p>
+            <div class="actions" style="margin-top:10px">
+              <button class="btn danger" data-delete-reward="${reward.id}">删除</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderTitleRulePanel() {
+  return `
+    <div class="panel">
+      <div class="section-title">
+        <h2>称号勋章规则</h2>
+        <span class="muted">学习任务和生活习惯都会参与判定</span>
+      </div>
+      <form class="form compact-form" data-level-title-form>
+        <div class="section-title">
+          <h3>积分等级称号</h3>
+          <span class="muted">按总积分自动显示</span>
+        </div>
+        <div class="inline-fields">
+          <div class="field">
+            <label>称号名称</label>
+            <input name="name" placeholder="例如：生活小队长" />
+          </div>
+          <div class="field">
+            <label>积分门槛</label>
+            <input name="points" type="number" min="0" placeholder="300" />
+          </div>
+        </div>
+        <div class="actions"><button class="btn primary" type="submit">添加等级称号</button></div>
+        <div class="badge-row">
+          ${state.levelTitles.map((title) => `
+            <span class="badge gold">${title.points} 分 · ${escapeHtml(title.name)} <button class="inline-delete" type="button" data-delete-level-title="${title.id}">×</button></span>
+          `).join("")}
+        </div>
+      </form>
+      <form class="form compact-form" data-title-rule-form>
+        <div class="inline-fields">
+          <div class="field">
+            <label>称号名称</label>
+            <input name="name" placeholder="例如：清爽小管家" />
+          </div>
+          <div class="field">
+            <label>称号类型</label>
+            <select name="type">
+              ${Object.entries(titleTypeNames).map(([key, value]) => `<option value="${key}">${value}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div class="inline-fields">
+          <div class="field">
+            <label>触发条件</label>
+            <select name="condition">
+              ${Object.entries(conditionNames).map(([key, value]) => `<option value="${key}">${value}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field">
+            <label>阈值</label>
+            <input name="threshold" type="number" min="1" value="1" />
+          </div>
+        </div>
+        <div class="inline-fields">
+          <div class="field">
+            <label>临时显示天数</label>
+            <input name="temporaryDays" type="number" min="0" value="0" />
+          </div>
+          <div class="field">
+            <label>说明</label>
+            <input name="description" placeholder="达成后显示给孩子看的说明" />
+          </div>
+        </div>
+        <div class="actions"><button class="btn primary" type="submit">添加称号规则</button></div>
+      </form>
+      <div class="manage-list rule-list">
+        ${state.titleRules.map((rule) => `
+          <div class="mini-card ${rule.type === "warning" ? "warning" : ""}">
+            <strong>${escapeHtml(rule.name)}</strong>
+            <p>${titleTypeNames[rule.type]} · ${conditionNames[rule.condition]} · 阈值 ${rule.threshold}${rule.temporaryDays ? ` · 临时 ${rule.temporaryDays} 天` : ""}</p>
+            <p>${escapeHtml(rule.description)}</p>
+            <div class="actions" style="margin-top:10px">
+              <button class="btn ghost" data-toggle-title-rule="${rule.id}">${rule.active ? "停用" : "启用"}</button>
+              <button class="btn danger" data-delete-title-rule="${rule.id}">删除</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -695,6 +1139,10 @@ function bindEvents() {
     button.addEventListener("click", () => claimReward(button.dataset.claim));
   });
   document.querySelector("[data-task-form]")?.addEventListener("submit", submitTask);
+  document.querySelector("[data-point-rules-form]")?.addEventListener("submit", submitPointRules);
+  document.querySelector("[data-reward-form]")?.addEventListener("submit", submitReward);
+  document.querySelector("[data-title-rule-form]")?.addEventListener("submit", submitTitleRule);
+  document.querySelector("[data-level-title-form]")?.addEventListener("submit", submitLevelTitle);
   document.querySelector("[data-ai-detail]")?.addEventListener("click", generateAiDetail);
   document.querySelector("[data-form-type]")?.addEventListener("change", updateFormVisibility);
   document.querySelector("[data-repeat-type]")?.addEventListener("change", updateFormVisibility);
@@ -709,6 +1157,18 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", () => deleteTask(button.dataset.delete));
+  });
+  document.querySelectorAll("[data-delete-reward]").forEach((button) => {
+    button.addEventListener("click", () => deleteReward(button.dataset.deleteReward));
+  });
+  document.querySelectorAll("[data-delete-title-rule]").forEach((button) => {
+    button.addEventListener("click", () => deleteTitleRule(button.dataset.deleteTitleRule));
+  });
+  document.querySelectorAll("[data-toggle-title-rule]").forEach((button) => {
+    button.addEventListener("click", () => toggleTitleRule(button.dataset.toggleTitleRule));
+  });
+  document.querySelectorAll("[data-delete-level-title]").forEach((button) => {
+    button.addEventListener("click", () => deleteLevelTitle(button.dataset.deleteLevelTitle));
   });
   document.querySelector("[data-cancel-form]")?.addEventListener("click", () => setState({ form: null }));
   updateFormVisibility();
