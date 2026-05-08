@@ -43,6 +43,6 @@ const server = http.createServer((request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Learning assistant running at http://localhost:${port}`);
+  console.log(`George assistant running at http://localhost:${port}`);
   console.log(`LAN access enabled on http://<your-computer-ip>:${port}`);
 });

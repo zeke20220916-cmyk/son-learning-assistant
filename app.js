@@ -343,7 +343,7 @@ function renderTopbar() {
   return `
     <header class="topbar">
       <div class="brand">
-        <h1>学习助理</h1>
+        <h1>George的私人小助理</h1>
         <p>${state.selectedDate} · ${weekdays[new Date(`${state.selectedDate}T12:00:00`).getDay()]} · 当前称号：${getLevelTitle(state.points)}</p>
       </div>
       <nav class="tabs" aria-label="视图切换">

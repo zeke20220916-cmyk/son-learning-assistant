@@ -1,7 +1,7 @@
 {
-  "name": "学习助理",
-  "short_name": "学习助理",
-  "description": "家庭学习任务、打卡、积分、称号与奖励助理。",
+  "name": "George的私人小助理",
+  "short_name": "George助手",
+  "description": "George的学习任务、打卡、积分、称号与奖励助理。",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f7f4ec",
