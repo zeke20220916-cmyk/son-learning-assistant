@@ -399,6 +399,79 @@ button {
   max-width: 1180px;
 }
 
+.stats-stack {
+  display: grid;
+  gap: 18px;
+  margin: 0 auto;
+  max-width: 1180px;
+}
+
+.stats-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.stat-list {
+  display: grid;
+  gap: 12px;
+}
+
+.stat-item {
+  background: #fffaf0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.stat-item-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+
+.progress-bar {
+  background: #e3ded2;
+  border-radius: 999px;
+  height: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.progress-bar span {
+  background: var(--green);
+  display: block;
+  height: 100%;
+}
+
+.stats-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.stats-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 105px minmax(160px, 1.5fr) minmax(150px, 1fr) 80px 80px 70px;
+  min-width: 760px;
+  padding: 11px 12px;
+}
+
+.stats-row:nth-child(odd) {
+  background: #fffaf0;
+}
+
+.stats-head {
+  background: #ece6d8 !important;
+  color: #514b42;
+  font-size: 13px;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+}
+
 .form {
   display: grid;
   gap: 12px;
@@ -518,7 +591,8 @@ button {
   }
 
   .layout,
-  .parent-grid {
+  .parent-grid,
+  .stats-grid {
     grid-template-columns: 1fr;
   }
 

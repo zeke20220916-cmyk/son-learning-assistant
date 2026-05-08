@@ -733,10 +733,12 @@ function showToast(message) {
 }
 
 function render() {
+  const viewHtml =
+    state.view === "child" ? renderChild() : state.view === "parent" ? renderParent() : renderStats();
   document.querySelector("#app").innerHTML = `
     <main class="app-shell">
       ${renderTopbar()}
-      ${state.view === "child" ? renderChild() : renderParent()}
+      ${viewHtml}
       ${state.toast ? `<div class="toast">${state.toast}</div>` : ""}
     </main>
   `;
@@ -760,6 +762,7 @@ function renderTopbar() {
       <nav class="tabs" aria-label="视图切换">
         <button class="tab ${state.view === "child" ? "active" : ""}" data-view="child">孩子端</button>
         <button class="tab ${state.view === "parent" ? "active" : ""}" data-view="parent">家长端</button>
+        <button class="tab ${state.view === "stats" ? "active" : ""}" data-view="stats">任务统计</button>
       </nav>
     </header>
   `;
@@ -963,6 +966,136 @@ function renderRewardsPanel() {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function getStatsData() {
+  const rows = Object.entries(state.daily || {})
+    .flatMap(([date, tasks]) => tasks.map((task) => ({ ...task, date })))
+    .sort((a, b) => `${b.date}${b.updatedAt || ""}`.localeCompare(`${a.date}${a.updatedAt || ""}`));
+  const completed = rows.filter((task) => task.status === "completed");
+  const missed = rows.filter((task) => task.status === "not_completed");
+  const pending = rows.filter((task) => task.status === "pending");
+  const totalSeconds = completed.reduce((sum, task) => sum + getTaskTimerSeconds(task), 0);
+  const totalPoints = completed.reduce((sum, task) => sum + (Number(task.points) || 0), 0);
+  return {
+    rows,
+    completed,
+    missed,
+    pending,
+    totalSeconds,
+    totalPoints,
+    completionRate: rows.length ? Math.round((completed.length / rows.length) * 100) : 0
+  };
+}
+
+function groupStats(rows, keyFn, labelFn) {
+  const map = new Map();
+  rows.forEach((task) => {
+    const key = keyFn(task) || "unknown";
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label: labelFn(key, task),
+        total: 0,
+        completed: 0,
+        missed: 0,
+        pending: 0,
+        points: 0,
+        seconds: 0
+      });
+    }
+    const item = map.get(key);
+    item.total += 1;
+    item.completed += task.status === "completed" ? 1 : 0;
+    item.missed += task.status === "not_completed" ? 1 : 0;
+    item.pending += task.status === "pending" ? 1 : 0;
+    item.points += task.status === "completed" ? Number(task.points) || 0 : 0;
+    item.seconds += task.status === "completed" ? getTaskTimerSeconds(task) : 0;
+  });
+  return [...map.values()].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+}
+
+function renderStats() {
+  const stats = getStatsData();
+  const byCategory = groupStats(stats.rows, (task) => task.category || "learning", (key) => categoryNames[key] || "学习任务");
+  const bySubject = groupStats(stats.rows, (task) => task.subject || "other", (key) => subjectNames[key] || "其他");
+  const byTask = groupStats(stats.rows, (task) => task.templateId || task.title, (_, task) => task.title);
+  const byDate = groupStats(stats.rows, (task) => task.date, (key) => key).slice(0, 14);
+  return `
+    <section class="stats-stack">
+      <div class="metric-grid">
+        ${metric("任务总数", stats.rows.length)}
+        ${metric("完成率", `${stats.completionRate}%`)}
+        ${metric("已完成", stats.completed.length)}
+        ${metric("未完成", stats.missed.length)}
+        ${metric("累计积分", stats.totalPoints)}
+        ${metric("累计用时", formatDuration(stats.totalSeconds))}
+      </div>
+      <div class="stats-grid">
+        ${renderStatsPanel("按大类", byCategory)}
+        ${renderStatsPanel("按科目", bySubject)}
+      </div>
+      <div class="stats-grid">
+        ${renderStatsPanel("最近日期", byDate)}
+        ${renderStatsPanel("按具体任务", byTask)}
+      </div>
+      <div class="panel">
+        <div class="section-title">
+          <h2>任务明细</h2>
+          <span class="muted">最近 ${Math.min(stats.rows.length, 40)} 条记录</span>
+        </div>
+        <div class="stats-table">
+          <div class="stats-row stats-head">
+            <span>日期</span><span>任务</span><span>分类</span><span>状态</span><span>用时</span><span>积分</span>
+          </div>
+          ${stats.rows.slice(0, 40).map((task) => `
+            <div class="stats-row">
+              <span>${task.date}</span>
+              <span>${escapeHtml(task.title)}</span>
+              <span>${categoryNames[task.category] || "学习任务"} · ${subjectNames[task.subject] || "其他"}</span>
+              <span>${statusText(task.status)}</span>
+              <span>${task.status === "completed" ? formatDuration(getTaskTimerSeconds(task)) : "-"}</span>
+              <span>${task.status === "completed" ? task.points : 0}</span>
+            </div>
+          `).join("") || `<div class="empty">还没有任务记录。</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderStatsPanel(title, items) {
+  return `
+    <div class="panel">
+      <div class="section-title">
+        <h2>${title}</h2>
+        <span class="muted">${items.length} 项</span>
+      </div>
+      <div class="stat-list">
+        ${items.map(renderStatItem).join("") || `<div class="empty">暂无数据</div>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderStatItem(item) {
+  const rate = item.total ? Math.round((item.completed / item.total) * 100) : 0;
+  return `
+    <div class="stat-item">
+      <div class="stat-item-head">
+        <strong>${escapeHtml(item.label)}</strong>
+        <span>${rate}%</span>
+      </div>
+      <div class="progress-bar"><span style="width:${rate}%"></span></div>
+      <div class="badge-row">
+        <span class="badge good">完成 ${item.completed}</span>
+        <span class="badge warn">未完成 ${item.missed}</span>
+        <span class="badge">待完成 ${item.pending}</span>
+        <span class="badge gold">${item.points} 分</span>
+        <span class="badge">用时 ${formatDuration(item.seconds)}</span>
+      </div>
+    </div>
   `;
 }
 
