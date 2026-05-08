@@ -12,6 +12,8 @@ const subjectNames = {
   chinese: "语文",
   english: "英语",
   reading: "阅读",
+  go: "围棋",
+  piano: "钢琴",
   habit: "习惯",
   other: "其他"
 };
@@ -314,7 +316,10 @@ function normalizeState(nextState) {
       category:
         task.category ||
         nextState.tasks.find((template) => template.id === task.templateId)?.category ||
-        "learning"
+        "learning",
+      record: task.record || {},
+      timerStartedAt: task.timerStartedAt || "",
+      timerSeconds: Number(task.timerSeconds) || 0
     }));
   });
   return nextState;
@@ -351,6 +356,9 @@ function ensureDaily(date) {
       points: Number(task.points) || 0,
       difficulty: task.difficulty,
       status: "pending",
+      record: {},
+      timerStartedAt: "",
+      timerSeconds: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }));
@@ -497,7 +505,17 @@ function shiftDate(date, offset) {
 function updateTaskStatus(taskId, status) {
   const tasks = currentTasks();
   const task = tasks.find((item) => item.id === taskId);
-  if (!task || task.status === status) return;
+  if (!task) return;
+  if (task.timerStartedAt) {
+    task.timerSeconds = getTaskTimerSeconds(task);
+    task.timerStartedAt = "";
+  }
+  if (task.status === status) {
+    task.updatedAt = new Date().toISOString();
+    saveState();
+    render();
+    return;
+  }
   if (task.status === "completed" && status !== "completed") {
     addPointLog(-task.points, `改为未完成：${task.title}`, task.id);
   }
@@ -510,6 +528,51 @@ function updateTaskStatus(taskId, status) {
   checkAchievements(state.selectedDate);
   saveState();
   render();
+}
+
+function submitDailyRecord(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const taskId = form.get("taskId");
+  const task = currentTasks().find((item) => item.id === taskId);
+  if (!task) return;
+  const record = {};
+  for (const [key, value] of form.entries()) {
+    if (key === "taskId") continue;
+    record[key] = String(value).trim();
+  }
+  task.record = record;
+  updateTaskStatus(taskId, "completed");
+}
+
+function toggleTaskTimer(taskId) {
+  const task = currentTasks().find((item) => item.id === taskId);
+  if (!task) return;
+  if (task.timerStartedAt) {
+    task.timerSeconds = getTaskTimerSeconds(task);
+    task.timerStartedAt = "";
+  } else {
+    task.timerStartedAt = new Date().toISOString();
+  }
+  task.updatedAt = new Date().toISOString();
+  saveState();
+  render();
+}
+
+function getTaskTimerSeconds(task) {
+  const base = Number(task.timerSeconds) || 0;
+  if (!task.timerStartedAt) return base;
+  return base + Math.max(0, Math.floor((Date.now() - new Date(task.timerStartedAt).getTime()) / 1000));
+}
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+    : `${minutes}:${String(secs).padStart(2, "0")}`;
 }
 
 function submitTask(event) {
@@ -761,6 +824,7 @@ function ring(label, value, percent, color) {
 }
 
 function renderTaskCard(task) {
+  const timerSeconds = getTaskTimerSeconds(task);
   return `
     <article class="task-card ${task.status}">
       <div class="task-head">
@@ -775,12 +839,97 @@ function renderTaskCard(task) {
         </div>
       </div>
       <div class="task-detail">${escapeHtml(task.detail)}</div>
-      <div class="actions">
-        <button class="btn primary" data-status="${task.id}:completed">完成</button>
-        <button class="btn danger" data-status="${task.id}:not_completed">未完成</button>
-      </div>
+      <form class="record-form" data-record-form>
+        <input type="hidden" name="taskId" value="${task.id}" />
+        ${renderRecordFields(task)}
+        <div class="timer-row">
+          <div>
+            <strong data-timer-display="${task.id}" data-started-at="${task.timerStartedAt}" data-base-seconds="${task.timerSeconds || 0}">${formatDuration(timerSeconds)}</strong>
+            <span class="muted">${task.timerStartedAt ? "计时中" : "已记录用时"}</span>
+          </div>
+          <button class="btn ghost" type="button" data-timer="${task.id}">${task.timerStartedAt ? "结束计时" : "开始计时"}</button>
+        </div>
+        <div class="actions">
+          <button class="btn primary" type="submit">完成并保存</button>
+          <button class="btn danger" type="button" data-status="${task.id}:not_completed">未完成</button>
+        </div>
+      </form>
+      ${renderSavedRecord(task)}
     </article>
   `;
+}
+
+function renderRecordFields(task) {
+  const record = task.record || {};
+  const field = (name, label, type = "text", placeholder = "") => `
+    <div class="field">
+      <label>${label}</label>
+      <input name="${name}" type="${type}" value="${escapeAttr(record[name] || "")}" placeholder="${escapeAttr(placeholder)}" />
+    </div>
+  `;
+  const select = (name, label, options) => `
+    <div class="field">
+      <label>${label}</label>
+      <select name="${name}">
+        ${options.map((option) => `<option value="${escapeAttr(option)}" ${record[name] === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+      </select>
+    </div>
+  `;
+  if (["reading", "chinese", "english"].includes(task.subject)) {
+    return `<div class="record-grid">
+      ${field("bookName", "书名", "text", "例如：神奇校车")}
+      ${field("bookProgress", "本书进度", "number", "0-100")}
+    </div>`;
+  }
+  if (task.subject === "go") {
+    return `<div class="record-grid">
+      ${field("goLevel", "围棋级别", "text", "例如：18级 / 5级 / 1段")}
+      ${select("gameResult", "胜负情况", ["未填写", "胜", "负", "和棋", "练习题"])}
+    </div>`;
+  }
+  if (task.subject === "piano") {
+    return `<div class="record-grid">
+      ${field("pieceName", "练习曲目", "text", "例如：小星星")}
+      ${field("practiceCount", "练习遍数", "number", "例如：5")}
+      ${field("pieceProgress", "曲目进度", "number", "0-100")}
+    </div>`;
+  }
+  return `<div class="record-grid">
+    ${field("note", "完成记录", "text", "简单写一下完成情况")}
+  </div>`;
+}
+
+function renderSavedRecord(task) {
+  if (task.status !== "completed") return "";
+  const entries = Object.entries(task.record || {}).filter(([, value]) => value);
+  const duration = getTaskTimerSeconds(task);
+  if (!entries.length && !duration) return "";
+  return `
+    <div class="saved-record">
+      <strong>已保存记录</strong>
+      <div class="badge-row">
+        ${duration ? `<span class="badge good">用时 ${formatDuration(duration)}</span>` : ""}
+        ${entries.map(([key, value]) => `<span class="badge">${recordLabel(key)}：${escapeHtml(value)}${recordSuffix(key)}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function recordLabel(key) {
+  return {
+    bookName: "书名",
+    bookProgress: "进度",
+    goLevel: "级别",
+    gameResult: "胜负",
+    pieceName: "曲目",
+    practiceCount: "遍数",
+    pieceProgress: "进度",
+    note: "记录"
+  }[key] || key;
+}
+
+function recordSuffix(key) {
+  return ["bookProgress", "pieceProgress"].includes(key) ? "%" : "";
 }
 
 function renderTitlesPanel() {
@@ -1135,6 +1284,12 @@ function bindEvents() {
       updateTaskStatus(id, status);
     });
   });
+  document.querySelectorAll("[data-record-form]").forEach((form) => {
+    form.addEventListener("submit", submitDailyRecord);
+  });
+  document.querySelectorAll("[data-timer]").forEach((button) => {
+    button.addEventListener("click", () => toggleTaskTimer(button.dataset.timer));
+  });
   document.querySelectorAll("[data-claim]").forEach((button) => {
     button.addEventListener("click", () => claimReward(button.dataset.claim));
   });
@@ -1172,6 +1327,23 @@ function bindEvents() {
   });
   document.querySelector("[data-cancel-form]")?.addEventListener("click", () => setState({ form: null }));
   updateFormVisibility();
+  startTimerDisplayLoop();
+}
+
+let timerDisplayLoop = null;
+
+function startTimerDisplayLoop() {
+  if (timerDisplayLoop) clearInterval(timerDisplayLoop);
+  timerDisplayLoop = setInterval(() => {
+    document.querySelectorAll("[data-timer-display]").forEach((item) => {
+      const startedAt = item.dataset.startedAt;
+      const base = Number(item.dataset.baseSeconds) || 0;
+      const elapsed = startedAt
+        ? base + Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+        : base;
+      item.textContent = formatDuration(elapsed);
+    });
+  }, 1000);
 }
 
 function updateFormVisibility() {
