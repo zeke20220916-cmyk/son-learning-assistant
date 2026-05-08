@@ -15,6 +15,10 @@ const subjectNames = {
   habit: "习惯",
   other: "其他"
 };
+const categoryNames = {
+  learning: "学习任务",
+  life: "生活习惯"
+};
 
 const levelTitles = [
   [0, "学习新兵"],
@@ -41,6 +45,7 @@ const defaultState = {
   tasks: [
     {
       id: crypto.randomUUID(),
+      category: "learning",
       type: "recurring",
       title: "阅读 20 分钟",
       subject: "reading",
@@ -54,6 +59,7 @@ const defaultState = {
     },
     {
       id: crypto.randomUUID(),
+      category: "learning",
       type: "recurring",
       title: "数学口算 20 题",
       subject: "math",
@@ -67,6 +73,7 @@ const defaultState = {
     },
     {
       id: crypto.randomUUID(),
+      category: "learning",
       type: "recurring",
       title: "英语听读 15 分钟",
       subject: "english",
@@ -75,6 +82,34 @@ const defaultState = {
       difficulty: "normal",
       repeatType: "weekly",
       weekdays: [1, 3, 5],
+      active: true,
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: crypto.randomUUID(),
+      category: "life",
+      type: "recurring",
+      title: "整理书桌",
+      subject: "habit",
+      detail: "把今天用过的书、本子和文具放回固定位置。\n桌面只保留明天要用的学习用品。",
+      points: 5,
+      difficulty: "easy",
+      repeatType: "daily",
+      weekdays: [],
+      active: true,
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: crypto.randomUUID(),
+      category: "life",
+      type: "recurring",
+      title: "睡前准备",
+      subject: "habit",
+      detail: "检查明天要带的书本和作业。\n把书包整理好，水杯放在容易看到的位置。",
+      points: 5,
+      difficulty: "easy",
+      repeatType: "daily",
+      weekdays: [],
       active: true,
       createdAt: new Date().toISOString()
     }
@@ -94,12 +129,29 @@ let state = loadState();
 
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return structuredClone(defaultState);
+  if (!raw) return normalizeState(structuredClone(defaultState));
   try {
-    return { ...structuredClone(defaultState), ...JSON.parse(raw), view: "child", toast: "" };
+    return normalizeState({ ...structuredClone(defaultState), ...JSON.parse(raw), view: "child", toast: "" });
   } catch {
-    return structuredClone(defaultState);
+    return normalizeState(structuredClone(defaultState));
   }
+}
+
+function normalizeState(nextState) {
+  nextState.tasks = (nextState.tasks || []).map((task) => ({
+    ...task,
+    category: task.category || "learning"
+  }));
+  Object.keys(nextState.daily || {}).forEach((date) => {
+    nextState.daily[date] = nextState.daily[date].map((task) => ({
+      ...task,
+      category:
+        task.category ||
+        nextState.tasks.find((template) => template.id === task.templateId)?.category ||
+        "learning"
+    }));
+  });
+  return nextState;
 }
 
 function saveState() {
@@ -125,6 +177,7 @@ function ensureDaily(date) {
     })
     .map((task) => ({
       id: crypto.randomUUID(),
+      category: task.category || "learning",
       templateId: task.id,
       title: task.title,
       subject: task.subject,
@@ -259,6 +312,7 @@ function submitTask(event) {
   const type = form.get("type");
   const task = {
     id: form.get("id") || crypto.randomUUID(),
+    category: form.get("category") || "learning",
     type,
     title: form.get("title").trim(),
     subject: form.get("subject"),
@@ -289,10 +343,21 @@ function deleteTask(id) {
 
 function generateAiDetail() {
   const title = document.querySelector("[name='title']")?.value.trim() || "学习任务";
+  const category = document.querySelector("[name='category']")?.value || "learning";
   const subject = document.querySelector("[name='subject']")?.value || "other";
   const minutes = subject === "reading" ? 20 : subject === "math" ? 15 : 18;
   const subjectText = subjectNames[subject] || "学习";
-  const detail = [
+  const detail =
+    category === "life"
+      ? [
+          `目标：养成一个稳定的生活习惯，完成「${title}」。`,
+          "步骤：",
+          "1. 先把需要整理或准备的东西放到眼前。",
+          `2. 按顺序完成「${title}」，不要只做一半。`,
+          "3. 完成后自己检查一遍，确认没有遗漏。",
+          "4. 确认已经完成后，在今日任务里点击“完成”。"
+        ].join("\n")
+      : [
     `目标：完成一次 ${minutes} 分钟的${subjectText}练习。`,
     "步骤：",
     `1. 先看清楚今天要完成的内容，准备好课本、练习本和铅笔。`,
@@ -357,6 +422,8 @@ function renderTopbar() {
 function renderChild() {
   const tasks = currentTasks();
   const completed = tasks.filter((task) => task.status === "completed").length;
+  const learningCount = tasks.filter((task) => task.category !== "life").length;
+  const lifeCount = tasks.filter((task) => task.category === "life").length;
   const taskPercent = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
   const dailyPoints = tasks.filter((task) => task.status === "completed").reduce((sum, task) => sum + task.points, 0);
   const coreDone = tasks.some((task) => ["math", "reading", "english"].includes(task.subject) && task.status === "completed");
@@ -366,8 +433,9 @@ function renderChild() {
         <div class="metric-grid">
           ${metric("总积分", state.points)}
           ${metric("今日完成", `${completed}/${tasks.length}`)}
+          ${metric("学习任务", learningCount)}
+          ${metric("生活习惯", lifeCount)}
           ${metric("连续满环", `${state.streak} 天`)}
-          ${metric("等级", getLevelTitle(state.points))}
         </div>
         <div class="panel">
           <div class="section-title">
@@ -417,6 +485,7 @@ function renderTaskCard(task) {
           <h3>${escapeHtml(task.title)}</h3>
           <div class="badge-row">
             <span class="badge">${subjectNames[task.subject] || "其他"}</span>
+            <span class="badge ${task.category === "life" ? "good" : ""}">${categoryNames[task.category] || "学习任务"}</span>
             <span class="badge gold">+${task.points} 分</span>
             <span class="badge ${task.status === "completed" ? "good" : task.status === "not_completed" ? "warn" : ""}">${statusText(task.status)}</span>
           </div>
@@ -491,6 +560,7 @@ function renderParent() {
 function renderTaskForm() {
   const task = state.form || {
     id: "",
+    category: "learning",
     type: "recurring",
     title: "",
     subject: "math",
@@ -509,22 +579,30 @@ function renderTaskForm() {
       <input type="hidden" name="createdAt" value="${task.createdAt || ""}" />
       <div class="inline-fields">
         <div class="field">
+          <label>任务大类</label>
+          <select name="category">
+            ${Object.entries(categoryNames).map(([key, value]) => `<option value="${key}" ${task.category === key ? "selected" : ""}>${value}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
           <label>任务类型</label>
           <select name="type" data-form-type>
             <option value="recurring" ${task.type === "recurring" ? "selected" : ""}>周期循环</option>
             <option value="one_time" ${task.type === "one_time" ? "selected" : ""}>临时任务</option>
           </select>
         </div>
+      </div>
+      <div class="inline-fields">
         <div class="field">
           <label>科目</label>
           <select name="subject">
             ${Object.entries(subjectNames).map(([key, value]) => `<option value="${key}" ${task.subject === key ? "selected" : ""}>${value}</option>`).join("")}
           </select>
         </div>
-      </div>
-      <div class="field">
-        <label>任务名称</label>
-        <input name="title" value="${escapeAttr(task.title)}" placeholder="例如：英语 Unit 3 听读 15 分钟" />
+        <div class="field">
+          <label>任务名称</label>
+          <input name="title" value="${escapeAttr(task.title)}" placeholder="例如：英语 Unit 3 听读 15 分钟" />
+        </div>
       </div>
       <div class="inline-fields">
         <div class="field">
@@ -584,6 +662,7 @@ function renderManageTask(task) {
           <h3>${escapeHtml(task.title)}</h3>
           <div class="badge-row">
             <span class="badge">${rule}</span>
+            <span class="badge ${task.category === "life" ? "good" : ""}">${categoryNames[task.category] || "学习任务"}</span>
             <span class="badge">${subjectNames[task.subject]}</span>
             <span class="badge gold">${task.points} 分</span>
             <span class="badge ${task.active ? "good" : "warn"}">${task.active ? "启用" : "停用"}</span>
